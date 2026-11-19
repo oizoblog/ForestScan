@@ -1,10 +1,16 @@
 import fs from 'node:fs'
+import path from 'node:path'
 import * as ort from 'onnxruntime-web/wasm'
 
-const dir = process.argv[2] || 'models/oyster_experiment'
-const manifest = JSON.parse(fs.readFileSync(`${dir}/manifest.json`, 'utf8'))
-const inputBytes = fs.readFileSync(`${dir}/verify_input.float32`)
-const expectedBytes = fs.readFileSync(`${dir}/verify_output.float32`)
+const target = process.argv[2] || 'models/oyster_experiment'
+const directModel = target.endsWith('.onnx')
+const dir = directModel ? path.dirname(target) : target
+const manifest = directModel
+  ? { modelFile: path.basename(target), inputSize: Number(process.argv[3]) }
+  : JSON.parse(fs.readFileSync(`${dir}/manifest.json`, 'utf8'))
+if (!Number.isInteger(manifest.inputSize)) throw new Error('input size required for direct ONNX verification')
+const inputBytes = fs.readFileSync(process.argv[4] || `${dir}/verify_input.float32`)
+const expectedBytes = fs.readFileSync(process.argv[5] || `${dir}/verify_output.float32`)
 const input = new Float32Array(inputBytes.buffer, inputBytes.byteOffset, inputBytes.byteLength / 4)
 const expected = new Float32Array(expectedBytes.buffer, expectedBytes.byteOffset, expectedBytes.byteLength / 4)
 ort.env.wasm.numThreads = 1

@@ -42,9 +42,22 @@ node scripts/verify_web_onnx.mjs models/oyster_experiment
 
 本机实验的 mAP50 为 **0.0421**，误报很多，**不能作为可用的野外检测模型**。`models/oyster_experiment/` 只用于本机验证，没有打包进公开 PWA，也不会自动加载。若手动选择此模型，界面会显示“实验模型”、mAP50 和“未经独立核验”。该数据集只覆盖种植场平菇，与森林场景存在明显差异。
 
+### Colab 森林蘑菇模型（本地待验收）
+
+将 Colab 导出的 `mushroom.onnx` 放在 `models/mushroom_v1/`。该目录被 Git 忽略；页面不会默认加载它，也不会随 Pages 发布。使用 `scripts/create_manifest.py` 从 ONNX 图验证输入输出，自动计算 SHA-256 与文件大小，再填写数据集来源、许可、署名和 Colab 验证指标。当前本地 manifest 见 `models/mushroom_v1/manifest.json`；保留 `experimental: true`，指标由训练方提供，尚未在本项目独立复现。Roboflow 项目页标注 CC BY 4.0，但原始图片来源和额外署名要求尚待核查。
+
+```powershell
+.venv\Scripts\python.exe scripts/verify_onnx.py models/mushroom_v1 <本地测试图片路径>
+node scripts/verify_web_onnx.mjs models/mushroom_v1
+```
+
+两个验证命令使用同一份预处理张量对照 Python ONNX Runtime 与 ONNX Runtime Web WASM。完成手机验收前，不应把训练集指标当作实际森林检测可靠性的保证。
+
+Colab 同图原始输出已放在本地 `models/comparison/`（同样被 Git 忽略）。执行 `.venv\Scripts\python.exe scripts/compare_pytorch_onnx.py` 可复查 ONNX CPU 与 PyTorch 的逐元素误差，以及 `conf=0.25`、NMS IoU `0.45` 下的最终框。该图的最大绝对误差为 `0.0005493`、平均绝对误差为 `0.00001558`；两边均保留 1 个框，框 IoU 为 `0.9999997`。原图经 Ultralytics LetterBox 重建的张量与 Colab 输入完全相同；同图 Web WASM 与 ONNX CPU 输出最大差约 `0.000458`。这些结果证明同一预处理张量上的导出和 WASM 推理一致，不等于 iPhone 上的画面预处理或野外识别质量已验收。
+
 ## 3. GitHub Pages / iPhone Safari
 
-第三阶段的逐项验收表见 [IPHONE_TEST.md](IPHONE_TEST.md)。本地 Git 仓库已初始化，尚无远程仓库；公开发布需要明确授权。
+第三阶段的逐项验收表见 [IPHONE_TEST.md](IPHONE_TEST.md)。本地 Git 仓库已配置 `oizoblog/ForestScan` 为远程；发布状态需以 GitHub Actions 和 Pages 的实际结果核对。模型目录被 Git 忽略，部署后仍需在 iPhone 的“文件”中手动选择 ONNX 与 manifest。
 
 1. 将本仓库推送到公开 GitHub 仓库的 `main` 分支（GitHub Free 的 Pages 适用于公开仓库）。
 2. 在仓库 Settings → Pages → Build and deployment 中将 Source 设为 **GitHub Actions**。`pages.yml` 自动测试、构建并部署，Vite `base` 自动使用仓库名。
