@@ -2,10 +2,11 @@ import './style.css'
 import { exportRecords, getLogs, getModel, getRecords, removeModel, saveLog, saveModel, saveRecord, saveTestResult, saveTiming } from './db'
 import type { Box, ModelManifest, ScanMode } from './types'
 import { drawBoxes, demoBoxes } from './vision'
+import { selectModelFiles } from './modelImport'
 import { registerSW } from 'virtual:pwa-register'
 
 registerSW({ immediate: true })
-document.querySelector<HTMLDivElement>('#app')!.innerHTML = `<main class="app"><header class="top"><div class="brand"><span class="dot"></span>ForestScan</div><span class="badge" id="network">检查网络</span></header><section class="viewer" id="viewer"><video id="video" autoplay muted playsinline></video><canvas id="overlay"></canvas><div class="placeholder" id="placeholder"><div class="glyph">🍄</div><strong>对准林地中的目标</strong><p>点击下方按钮开启后置摄像头</p></div><div class="hud"><span id="scan">待启动</span><span id="fps">0 FPS</span></div><div class="notice">疑似蘑菇，不可作为食用鉴定依据</div></section><section class="panel"><div class="mode"><button id="realMode" class="active">真实模型</button><button id="demoMode">模拟演示</button></div><p class="status" id="modelStatus">未加载有效蘑菇专用模型；真实检测不可用。</p><div class="modelrow"><label for="modelFiles">加载模型和 manifest</label><input type="file" id="modelFiles" accept=".onnx,.json" multiple><span class="small">选择配套的 .onnx 与 manifest.json</span><button id="forgetModel" class="secondary">清除缓存模型</button></div><div class="small" id="infer">推理耗时：—</div></section><div class="controls"><button id="start" class="primary">启动摄像头</button><button id="stop" class="secondary" disabled>停止</button><button id="save" class="secondary">保存当前记录</button><button id="export" class="secondary">导出诊断报告</button></div><div class="status" id="status" role="status">准备就绪</div><div class="records small" id="records">本机记录：0 条</div><details class="small"><summary>错误日志</summary><div id="logList">暂无错误</div></details><footer class="footer">本应用不识别可食用性。离线功能需在 HTTPS 页面首次载入后使用。</footer></main>`
+document.querySelector<HTMLDivElement>('#app')!.innerHTML = `<main class="app"><header class="top"><div class="brand"><span class="dot"></span>ForestScan</div><span class="badge" id="network">检查网络</span></header><section class="viewer" id="viewer"><video id="video" autoplay muted playsinline></video><canvas id="overlay"></canvas><div class="placeholder" id="placeholder"><div class="glyph">🍄</div><strong>对准林地中的目标</strong><p>点击下方按钮开启后置摄像头</p></div><div class="hud"><span id="scan">待启动</span><span id="fps">0 FPS</span></div><div class="notice">疑似蘑菇，不可作为食用鉴定依据</div></section><section class="panel"><div class="mode"><button id="realMode" class="active">真实模型</button><button id="demoMode">模拟演示</button></div><p class="status" id="modelStatus">未加载有效蘑菇专用模型；真实检测不可用。</p><div class="modelrow"><label for="modelFiles">加载模型和 manifest</label><input type="file" id="modelFiles" multiple><span class="small">选择配套的 .onnx 与 manifest.json</span><button id="forgetModel" class="secondary">清除缓存模型</button></div><div class="small" id="infer">推理耗时：—</div></section><div class="controls"><button id="start" class="primary">启动摄像头</button><button id="stop" class="secondary" disabled>停止</button><button id="save" class="secondary">保存当前记录</button><button id="export" class="secondary">导出诊断报告</button></div><div class="status" id="status" role="status">准备就绪</div><div class="records small" id="records">本机记录：0 条</div><details class="small"><summary>错误日志</summary><div id="logList">暂无错误</div></details><footer class="footer">本应用不识别可食用性。离线功能需在 HTTPS 页面首次载入后使用。</footer></main>`
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T
 const video = $<HTMLVideoElement>('video'), canvas = $<HTMLCanvasElement>('overlay')
@@ -202,16 +203,21 @@ async function loadModel(value: unknown, bytes: ArrayBuffer, cache: boolean) {
 }
 
 $<HTMLInputElement>('modelFiles').onchange = async event => {
-  userSelectedModel = true
   const files = Array.from((event.target as HTMLInputElement).files || [])
-  const onnx = files.find(f => f.name.toLowerCase().endsWith('.onnx'))
-  const json = files.find(f => f.name.toLowerCase().endsWith('.json'))
-  if (!onnx || !json) { setStatus('请同时选择 .onnx 和 manifest.json。', true); return }
+  let onnx: File, manifest: ModelManifest
   try {
-    const manifest = validateManifest(JSON.parse(await json.text()))
+    const selected = selectModelFiles(files)
+    onnx = selected.onnx
+    manifest = validateManifest(JSON.parse(await selected.manifestFile.text()))
     if (manifest.modelFile !== onnx.name) throw new Error('模型文件名与 manifest 不一致')
-    await loadModel(manifest, await onnx.arrayBuffer(), true)
-  } catch (error) { failModel(`模型加载失败：${String(error)}`) }
+  } catch (error) {
+    setStatus(`模型文件选择失败：${String(error)}`, true)
+    testResult('model-import', false, String(error))
+    return
+  }
+  userSelectedModel = true
+  try { await loadModel(manifest, await onnx.arrayBuffer(), true) }
+  catch (error) { failModel(`模型加载失败：${String(error)}`) }
 }
 void getModel().then(saved => {
   if (!saved || userSelectedModel) return
